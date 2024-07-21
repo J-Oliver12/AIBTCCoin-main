@@ -1,20 +1,25 @@
+// Use strict mode for better error handling and performance
 'use strict';
-const crypto = require('crypto');
-const EC = require('elliptic').ec;
-const ec = new EC('secp256k1');
-const debug = require('debug')('AIBTCcoin:blockchain');
-const db = require('./db');  
 
+// Import required modules
+const crypto = require('crypto'); // For hashing
+const EC = require('elliptic').ec; // For elliptic curve cryptography
+const ec = new EC('secp256k1'); // Instantiate elliptic curve with 'secp256k1'
+const debug = require('debug')('AIBTCcoin:blockchain'); // For debugging
+const db = require('./db'); // Database module
+
+// Transaction class definition
 class Transaction {
   constructor(fromAddress, toAddress, amount) {
-    this.fromAddress = fromAddress;
-    this.toAddress = toAddress;
-    this.amount = amount;
-    this.timestamp = Date.now();
-    this.signature = null; 
-    this.blockHash = ''; 
+    this.fromAddress = fromAddress; // Address of sender
+    this.toAddress = toAddress; // Address of receiver
+    this.amount = amount; // Amount to be transferred
+    this.timestamp = Date.now(); // Timestamp of the transaction
+    this.signature = null; // Signature of the transaction
+    this.blockHash = ''; // Hash of the block containing this transaction
   }
 
+  // Calculate the hash of the transaction
   calculateHash() {
     return crypto
       .createHash('sha256')
@@ -22,30 +27,36 @@ class Transaction {
       .digest('hex');
   }
 
+  // Sign the transaction with the given signing key
   sign(signingKey) {
     console.log('Signing Public Key:', signingKey.getPublic('hex'));
     console.log('Transaction From Address:', this.fromAddress);
     
+    // Ensure the signing key matches the fromAddress
     if (signingKey.getPublic('hex') !== this.fromAddress) {
       throw new Error('You cannot sign transactions for other wallets!');
     }
-  
+
+    // Calculate the transaction hash and sign it
     const hashTx = this.calculateHash();
     const sig = signingKey.sign(hashTx, 'base64');
     this.signature = sig.toDER('hex');
   }
 
+  // Validate the transaction
   isValid() {
-    if (this.fromAddress === null) return true;
+    if (this.fromAddress === null) return true; // Allow mining rewards
   
     if (!this.signature || this.signature.length === 0) {
       throw new Error('No signature in this transaction');
     }
-  
+
+    // Verify the signature
     const publicKey = ec.keyFromPublic(this.fromAddress, 'hex');
     return publicKey.verify(this.calculateHash(), this.signature);
   }
   
+  // Save the transaction to the database
   async save() {
     const query = 'INSERT INTO transactions (hash, from_address, to_address, amount, timestamp, signature, block_hash) VALUES (?, ?, ?, ?, ?, ?, ?)';
     const values = [this.calculateHash(), this.fromAddress, this.toAddress, this.amount, this.timestamp, this.signature, this.blockHash];
@@ -58,6 +69,7 @@ class Transaction {
     });
   }
 
+  // Load a transaction from the database
   static async load(hash) {
     const query = 'SELECT * FROM transactions WHERE hash = ?';
 
@@ -79,30 +91,33 @@ class Transaction {
   }
 }
 
+// Block class definition
 class Block {
   constructor(timestamp, transactions, previousHash = '') {
-    this.previousHash = previousHash;
-    this.timestamp = timestamp;
-    this.transactions = transactions;
-    this.nonce = 0;
-    this.hash = this.calculateHash();
-    this.difficulty = 2;  
+    this.previousHash = previousHash; // Hash of the previous block
+    this.timestamp = timestamp; // Timestamp of block creation
+    this.transactions = transactions; // Transactions included in the block
+    this.nonce = 0; // Nonce for mining
+    this.hash = this.calculateHash(); // Hash of the block
+    this.difficulty = 2; // Mining difficulty
   }
 
+  // Calculate the hash of the block
   calculateHash() {
     return crypto
-        .createHash('sha256')
-        .update(this.previousHash + this.timestamp + JSON.stringify(this.transactions.map(tx => {
-          const { blockHash, ...txWithoutBlockHash } = tx; 
-          return txWithoutBlockHash;
-        })) + this.nonce)
-        .digest('hex');
+      .createHash('sha256')
+      .update(this.previousHash + this.timestamp + JSON.stringify(this.transactions.map(tx => {
+        const { blockHash, ...txWithoutBlockHash } = tx; // Exclude blockHash from transaction data
+        return txWithoutBlockHash;
+      })) + this.nonce)
+      .digest('hex');
   }
   
+  // Mine the block by finding a hash that satisfies the difficulty
   mineBlock(difficulty) {
     while (this.hash.substring(0, difficulty) !== Array(difficulty + 1).join('0')) {
-        this.nonce++;
-        this.hash = this.calculateHash();
+      this.nonce++;
+      this.hash = this.calculateHash();
     }
 
     console.log("Block mined:");
@@ -115,6 +130,7 @@ class Block {
     console.log(`Block mined: ${this.hash}`);
   }
 
+  // Validate all transactions in the block
   hasValidTransactions() {
     for (const tx of this.transactions) {
       if (!tx.isValid()) {
@@ -124,6 +140,7 @@ class Block {
     return true;
   }
 
+  // Save the block and its transactions to the database
   async save() {
     const query = 'INSERT INTO blocks (hash, previous_hash, timestamp, nonce, difficulty) VALUES (?, ?, ?, ?, ?)';
     const values = [this.hash, this.previousHash, this.timestamp, this.nonce, this.difficulty];
@@ -133,8 +150,8 @@ class Block {
         if (err) return reject(err);
         
         for (const tx of this.transactions) {
-          tx.blockHash = this.hash;
-          await tx.save();
+          tx.blockHash = this.hash; // Set blockHash for each transaction
+          await tx.save(); // Save each transaction
         }
         
         resolve(results);
@@ -142,6 +159,7 @@ class Block {
     });
   }
 
+  // Load a block and its transactions from the database
   static async load(hash) {
     const query = 'SELECT * FROM blocks WHERE hash = ?';
 
@@ -161,7 +179,7 @@ class Block {
             if (err) return reject(err);
             
             for (const tx of txResults) {
-              const transaction = await Transaction.load(tx.hash);
+              const transaction = await Transaction.load(tx.hash); // Load each transaction
               if (transaction) block.transactions.push(transaction);
             }
 
@@ -175,22 +193,26 @@ class Block {
   }
 }
 
+// Blockchain class definition
 class Blockchain {
   constructor() {
-    this.chain = [this.createGenesisBlock()];
-    this.difficulty = 2;
-    this.pendingTransactions = [];
-    this.miningReward = 100;
+    this.chain = [this.createGenesisBlock()]; // Initialize blockchain with genesis block
+    this.difficulty = 2; // Mining difficulty
+    this.pendingTransactions = []; // Transactions waiting to be mined
+    this.miningReward = 100; // Reward for mining a block
   }
 
+  // Create the genesis block
   createGenesisBlock() {
     return new Block(Date.now(), [], '0');
   }
 
+  // Get the latest block in the chain
   getLatestBlock() {
     return this.chain[this.chain.length - 1];
   }
 
+  // Mine pending transactions and reward the miner
   async minePendingTransactions(miningRewardAddress) {
     const rewardTx = new Transaction(null, miningRewardAddress, this.miningReward);
     this.pendingTransactions.push(rewardTx);
@@ -200,12 +222,13 @@ class Blockchain {
 
     debug('Block successfully mined!');
     
-    await block.save();
+    await block.save(); // Save the mined block
 
-    this.chain.push(block);
-    this.pendingTransactions = [];
+    this.chain.push(block); // Add the block to the chain
+    this.pendingTransactions = []; // Clear pending transactions
   }
 
+  // Add a new transaction to the list of pending transactions
   addTransaction(transaction) {
     if (!transaction.fromAddress || !transaction.toAddress) {
       throw new Error('Transaction must include from and to address');
@@ -225,6 +248,7 @@ class Blockchain {
       throw new Error('Not enough balance');
     }
 
+    // Ensure there are no pending transactions exceeding the wallet balance
     const pendingTxForWallet = this.pendingTransactions.filter(
       tx => tx.fromAddress === transaction.fromAddress
     );
@@ -246,6 +270,7 @@ class Blockchain {
     debug('Transaction added: %s', transaction);
   }
 
+  // Get the balance of a given address
   getBalanceOfAddress(address) {
     let balance = 0;
 
@@ -264,6 +289,7 @@ class Blockchain {
     return balance;
   }
 
+  // Validate the entire blockchain
   async isChainValid() {
     const genesisBlock = this.chain[0];
     if (genesisBlock.hash !== genesisBlock.calculateHash()) {
@@ -283,6 +309,7 @@ class Blockchain {
       console.log("Transactions:", JSON.stringify(currentBlock.transactions));
       console.log("Nonce:", currentBlock.nonce);
     
+      // Validate the block hash
       if (currentBlock.hash !== currentBlock.calculateHash()) {
         console.log(`Block ${i} hash invalid`);
         console.log(`Expected hash: ${currentBlock.hash}`);
@@ -290,11 +317,13 @@ class Blockchain {
         return false;
       }
     
+      // Validate the link between blocks
       if (currentBlock.previousHash !== previousBlock.hash) {
         console.log(`Block ${i} previous hash invalid`);
         return false;
       }
     
+      // Validate all transactions in the block
       if (!currentBlock.hasValidTransactions()) {
         console.log(`Block ${i} has invalid transactions`);
         return false;
@@ -305,7 +334,9 @@ class Blockchain {
   }
 }
 
+// Export the classes for use in other modules
 module.exports = { Blockchain, Block, Transaction };
+
 
 
 
