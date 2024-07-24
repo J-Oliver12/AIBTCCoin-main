@@ -1,7 +1,7 @@
-// Import Blockchain and Transaction classes from the blockchain module
-const { Blockchain, Transaction } = require('./src/blockchain');
+'use strict';
 
-// Import elliptic library for cryptographic functions
+const { Blockchain, Transaction } = require('./src/blockchain');
+const { Node, MerkleTree } = require('./src/merkleTree');
 const EC = require('elliptic').ec;
 
 // Create a new elliptic curve instance using the secp256k1 curve
@@ -16,21 +16,24 @@ const publicKey = keyPair.getPublic('hex'); // Extract the public key in hexadec
 console.log('Public Key:', publicKey);
 console.log('Private Key:', privateKey);
 
+// Example values to build the Merkle Tree
+const values = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+
+if (values.length === 0) {
+    console.error("Error: No values provided to build the Merkle Tree.");
+    process.exit(1);
+}
+
+const merkleTree = new MerkleTree(values);
+merkleTree.printTree();
+console.log('Merkle Tree Root Hash:', merkleTree.getRootHash());
+
 // Create a new instance of the Blockchain class
 const myCoin = new Blockchain();
-
-// Function to add an initial balance to an address by creating a transaction
-function addInitialBalance(blockchain, address, amount) {
-  const initialTx = new Transaction(null, address, amount);
-  blockchain.pendingTransactions.push(initialTx);
-}
 
 // Log the initial state of the blockchain
 console.log("Initial Blockchain State:");
 console.log(JSON.stringify(myCoin, null, 2));
-
-// Add initial balance of 1000 to the public key address
-addInitialBalance(myCoin, publicKey, 1000);
 
 // Async function to create and mine transactions
 (async () => {
@@ -45,12 +48,18 @@ addInitialBalance(myCoin, publicKey, 1000);
 
     // Create a new transaction from the public key address to 'address2' with amount 100
     const tx1 = new Transaction(publicKey, 'address2', 100);
-    console.log('New Transaction - From Address:', tx1.fromAddress);
-    console.log('New Transaction - To Address:', tx1.toAddress);
-
+    
     // Sign the transaction with the private key
     tx1.sign(ec.keyFromPrivate(privateKey));
+
+    console.log('Signing Transaction');
+    console.log('Transaction Validity Before Adding:', tx1.isValid());
+    console.log('Transaction Details:', tx1);
+    
     myCoin.addTransaction(tx1);
+
+    console.log('New Transaction - From Address:', tx1.fromAddress);
+    console.log('New Transaction - To Address:', tx1.toAddress);
 
     // Mine the new transactions
     await myCoin.minePendingTransactions('miner-address');
@@ -74,3 +83,7 @@ addInitialBalance(myCoin, publicKey, 1000);
     console.error('Error:', error);
   }
 })();
+
+
+
+
