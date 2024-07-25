@@ -30,4 +30,3 @@ CREATE TABLE merkle_nodes (
   node_value VARCHAR(64),
   FOREIGN KEY (block_hash) REFERENCES blocks(hash)
 );
-

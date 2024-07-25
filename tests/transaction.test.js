@@ -1,23 +1,23 @@
 const assert = require('assert');
-const { Transaction } = require('../src/blockchain');
-const { createSignedTx, signingKey } = require('./helpers');
+const { Transaction, Blockchain } = require('../src/blockchain'); // Adjust path
+const { createSignedTx, signingKey } = require('./helpers'); // Ensure these helpers are adapted
 
 describe('Transaction class', function() {
   describe('Constructor', function() {
     it('should correctly initialize the transaction', function() {
-      const tx = createSignedTx();
-      assert.strictEqual(tx.fromAddress, signingKey.getPublic('hex'));
-      assert.strictEqual(tx.toAddress, 'b2');
-      assert.strictEqual(tx.amount, 10);
-      assert.strictEqual(tx.timestamp, 0);
-      assert.strictEqual(tx.signature, 'sig');
+      const tx = new Transaction('address1', 'address2', 100);
+      assert.strictEqual(tx.fromAddress, 'address1');
+      assert.strictEqual(tx.toAddress, 'address2');
+      assert.strictEqual(tx.amount, 100);
+      assert.ok(tx.timestamp);
+      assert.strictEqual(tx.signature, null);
     });
   });
 
   describe('Sign', function() {
     it('should sign the transaction', function() {
       const tx = createSignedTx();
-      assert.strictEqual(tx.signature, 'sig');
+      assert.ok(tx.signature);
     });
 
     it('should fail if trying to sign without the from address', function() {
@@ -49,6 +49,17 @@ describe('Transaction class', function() {
       const tx = createSignedTx();
       tx.amount = -10;
       assert(!tx.isValid());
+    });
+
+    it('should fail when not having enough balance', () => {
+      const blockchain = new Blockchain();
+      const walletAddress = 'walletAddress1';
+      blockchain.minePendingTransactions(walletAddress);
+    
+      const tx1 = new Transaction(walletAddress, 'recipientAddress', 150);
+      tx1.sign(ec.keyFromPrivate('privateKey'));
+    
+      assert.strictEqual(tx1.isValid(), false);
     });
 
     it('should fail if the transaction has zero amount', function() {

@@ -180,6 +180,3 @@ module.exports = { Node, MerkleTree };
 
 
 
-
-
-
