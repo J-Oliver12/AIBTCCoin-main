@@ -1,47 +1,44 @@
 const assert = require('assert');
-const { Block } = require('../src/blockchain'); // Ensure correct path
-const { createSignedTx } = require('./helpers'); // Ensure this helper is adapted to your project
+const { Block } = require('../src/blockchain'); 
+const { createSignedTx } = require('./helpers'); 
 
 let blockObj = null;
 
 beforeEach(function() {
   const transactions = [createSignedTx()];
-  blockObj = new Block(1, 'a1', Date.now(), transactions, 1); // Updated constructor parameters
+  const fixedTimestamp = 1625245440000; // Set a fixed timestamp for consistency
+  blockObj = new Block(1, 'a1', fixedTimestamp, transactions, 1); // Updated constructor parameters
+  blockObj.mineBlock(0); // Adjust difficulty 
 });
 
 describe('Block class', function() {
-  beforeEach(function() {
-    const transactions = [createSignedTx()];
-    blockObj = new Block(1, 'a1', Date.now(), transactions, 1);
-  });
-
   describe('Constructor', function() {
     it('should correctly save parameters', function() {
       assert.strictEqual(blockObj.previousHash, 'a1');
-      assert.ok(blockObj.timestamp);
+      assert.ok(blockObj.timestamp); // Check if timestamp is set
       assert.strictEqual(blockObj.transactions.length, 1);
       assert.strictEqual(blockObj.nonce, 0);
-      assert.ok(blockObj.merkleRoot);
+      assert.ok(blockObj.merkleRoot); // Check if Merkle root is set
     });
 
-    it('should correctly save parameters without "previousHash"', function() {
+    it('should correctly save parameters, without giving "previousHash"', function() {
       const transactions = [createSignedTx()];
       blockObj = new Block(1, '', Date.now(), transactions, 1);
       assert.strictEqual(blockObj.previousHash, '');
-      assert.ok(blockObj.timestamp);
+      assert.ok(blockObj.timestamp); // Check if timestamp is set
       assert.strictEqual(blockObj.transactions.length, 1);
       assert.strictEqual(blockObj.nonce, 0);
-      assert.ok(blockObj.merkleRoot);
+      assert.ok(blockObj.merkleRoot); // Check if Merkle root is set
     });
   });
 
   describe('Calculate hash', function() {
     it('should correctly calculate the SHA256', function() {
-      blockObj.timestamp = 1625245440000; // Fixed timestamp
-      blockObj.mineBlock(0); // Adjust difficulty if needed
+      const expectedHash = blockObj.calculateHash();
       assert.strictEqual(
         blockObj.hash,
-        blockObj.calculateHash()
+        expectedHash,
+        `Expected hash ${expectedHash}, but got ${blockObj.hash}`
       );
     });
 
@@ -64,7 +61,7 @@ describe('Block class', function() {
 
     it('should return false when a single tx is bad', function() {
       const badTx = createSignedTx();
-      badTx.amount = 1337;
+      badTx.amount = 1337; // Adjust field names and tampering logic as needed
       blockObj.transactions = [
         createSignedTx(),
         badTx
@@ -73,7 +70,6 @@ describe('Block class', function() {
     });
   });
 });
-
 
 
 

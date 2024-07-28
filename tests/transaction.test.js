@@ -2,6 +2,10 @@ const assert = require('assert');
 const { Transaction, Blockchain } = require('../src/blockchain'); // Adjust path
 const { createSignedTx, signingKey } = require('./helpers'); // Ensure these helpers are adapted
 
+const EC = require('elliptic').ec;
+
+const ec = new EC('secp256k1');
+
 describe('Transaction class', function() {
   describe('Constructor', function() {
     it('should correctly initialize the transaction', function() {
@@ -53,13 +57,23 @@ describe('Transaction class', function() {
 
     it('should fail when not having enough balance', () => {
       const blockchain = new Blockchain();
-      const walletAddress = 'walletAddress1';
+      
+      // Generate a key pair for the test
+      const keyPair = ec.genKeyPair();
+      const walletAddress = keyPair.getPublic('hex');
+      
+      // Mine a block to give the wallet some balance
       blockchain.minePendingTransactions(walletAddress);
-    
+      
+      // Try to create a transaction with an amount larger than the balance
       const tx1 = new Transaction(walletAddress, 'recipientAddress', 150);
-      tx1.sign(ec.keyFromPrivate('privateKey'));
+      tx1.sign(keyPair);
+      
+      // Check if the transaction is added to the blockchain's pending transactions
+      const added = blockchain.addTransaction(tx1);
     
-      assert.strictEqual(tx1.isValid(), false);
+      // Assert the transaction was not added due to insufficient balance
+      assert.strictEqual(added, false);
     });
 
     it('should fail if the transaction has zero amount', function() {

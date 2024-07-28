@@ -8,7 +8,7 @@ CREATE TABLE blocks (
   nonce INT,
   difficulty INT,
   merkle_root VARCHAR(64),
-  index INT
+  `index` INT
 );
 
 CREATE TABLE transactions (

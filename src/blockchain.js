@@ -107,12 +107,14 @@ class Block {
 
   // Calculate the hash of the block
   calculateHash() {
+    const transactionsData = JSON.stringify(this.transactions.map(tx => {
+      const { blockHash, ...txWithoutBlockHash } = tx; // Exclude blockHash from transaction data
+      return txWithoutBlockHash; // Convert transactions to JSON string
+    }));
+
     return crypto
       .createHash('sha256')
-      .update(this.previousHash + this.timestamp + this.merkleRoot + this.nonce + JSON.stringify(this.transactions.map(tx => {
-        const { blockHash, ...txWithoutBlockHash } = tx; // Exclude blockHash from transaction data
-        return txWithoutBlockHash; // Convert transactions to JSON string
-      })))
+      .update(this.previousHash + this.timestamp + this.merkleRoot + this.nonce + transactionsData)
       .digest('hex');
   }
 
@@ -231,15 +233,21 @@ class Blockchain {
   async minePendingTransactions(miningRewardAddress) {
     const rewardTx = new Transaction(null, miningRewardAddress, this.miningReward); // Create a reward transaction
     this.pendingTransactions.push(rewardTx); // Add reward transaction to pending transactions
-
+  
     // Create a new block with pending transactions
     const block = new Block(this.chain.length, this.getLatestBlock().hash, Date.now(), this.pendingTransactions, this.difficulty);
     block.mineBlock(this.difficulty); // Mine the block
+  
+    console.log(`Mined block with hash: ${block.hash}`);
+    this.chain.push(block); // Add the block to the blockchain
 
+    // Log the transactions in the block
+    console.log(`Transactions in block ${block.index}:`, block.transactions);
+
+    this.pendingTransactions = []; // Clear pending transactions
     await block.save(); // Save the block to the database
 
-    this.chain.push(block); // Add the block to the blockchain
-    this.pendingTransactions = []; // Clear pending transactions
+    console.log(`Reward transaction: ${rewardTx}`);
   }
 
   // Add a new transaction to the list of pending transactions
@@ -253,22 +261,31 @@ class Blockchain {
     if (!transaction.isValid()) {
       throw new Error('Cannot add invalid transaction to the chain.');
     }
+    const senderBalance = this.getBalanceOfAddress(transaction.fromAddress);
+    if (senderBalance < transaction.amount) {
+      console.log(`Insufficient balance: ${senderBalance} < ${transaction.amount}`);
+      return false; // Insufficient balance
+    }
     this.pendingTransactions.push(transaction); // Add the transaction to pending transactions
+    return true; // Transaction added successfully
   }
 
   // Get the balance of a specific address
   getBalanceOfAddress(address) {
     let balance = 0;
+
     for (const block of this.chain) {
       for (const tx of block.transactions) {
         if (tx.fromAddress === address) {
           balance -= tx.amount; // Deduct amount if address is sender
         }
+
         if (tx.toAddress === address) {
           balance += tx.amount; // Add amount if address is recipient
         }
       }
     }
+    console.log(`Balance of address ${address}: ${balance}`);
     return balance; // Return the balance
   }
 

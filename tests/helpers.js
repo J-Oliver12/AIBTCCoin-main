@@ -3,13 +3,14 @@ const EC = require('elliptic').ec;
 
 const ec = new EC('secp256k1');
 
-function createSignedTx(amount = 10) {
-  const keyPair = ec.genKeyPair();
-  const publicKey = keyPair.getPublic('hex');
-  
-  const tx = new Transaction(publicKey, 'b2', amount);
+const keyPair = ec.genKeyPair();
+const publicKey = keyPair.getPublic('hex');
+
+function createSignedTx(amount = 10, toAddress = 'b2') {
+  if (amount <= 0) throw new Error('Amount must be positive');
+
+  const tx = new Transaction(publicKey, toAddress, amount);
   tx.timestamp = Date.now();
-  
   tx.sign(keyPair);
 
   return tx;
@@ -29,14 +30,16 @@ async function createBCWithMined() {
   return blockchain;
 }
 
-const keyPair = ec.genKeyPair();
-
 module.exports = {
   createSignedTx,
   createBlockchainWithTx,
   createBCWithMined,
   signingKey: keyPair
 };
+
+
+
+
 
 
 
