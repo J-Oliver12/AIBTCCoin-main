@@ -81,6 +81,80 @@ class Transaction {
       });
     });
   }
+
+  // Add Solana-specific transaction handling
+  async executeSolanaTransaction(fromKeypair, toAddress) {
+    try {
+      const balance = await getBalance(fromKeypair.publicKey.toString());
+      if (balance < this.amount) {
+        throw new Error('Insufficient balance');
+      }
+
+      const signature = await transferSOL(fromKeypair, toAddress, this.amount);
+      console.log('Transaction confirmed with signature:', signature);
+
+      // Save the transaction to your blockchain
+      await this.save();
+    } catch (error) {
+      console.error('Solana transaction failed:', error);
+    }
+  }
+  
+  async savePending() {
+    const query = 'INSERT INTO pending_transactions (hash, from_address, to_address, amount, timestamp, signature) VALUES (?, ?, ?, ?, ?, ?)';
+    const values = [this.calculateHash(), this.fromAddress, this.toAddress, this.amount, this.timestamp, this.signature];
+
+    return new Promise((resolve, reject) => {
+      db.query(query, values, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  }
+
+  // Load all pending transactions
+  static async loadPendingTransactions() {
+    return new Promise((resolve, reject) => {
+      const query = 'SELECT * FROM pending_transactions';
+      db.query(query, (err, results) => {
+        if (err) return reject(err);
+        const transactions = results.map(txData => {
+          const tx = new Transaction(txData.from_address, txData.to_address, txData.amount, txData.timestamp, txData.signature);
+          tx.hash = txData.hash;
+          return tx;
+        });
+        resolve(transactions);
+      });
+    });
+  }
+
+  // Verify that the pending transactions are saved in the database
+  static async verifyPendingTransactions() {
+    return new Promise((resolve, reject) => {
+      const query = 'SELECT * FROM pending_transactions';
+      db.query(query, (err, results) => {
+        if (err) return reject(err);
+        const transactions = results.map(txData => {
+          const tx = new Transaction(txData.from_address, txData.to_address, txData.amount, txData.timestamp, txData.signature);
+          tx.hash = txData.hash; // Ensure hash is set here
+          return tx;
+        });
+        console.log('Pending Transactions:', transactions);
+        resolve(transactions);
+      });
+    });
+  }
+
+  // Delete pending transactions after they are included in a block
+  static async clearPendingTransactions() {
+    return new Promise((resolve, reject) => {
+      const query = 'DELETE FROM pending_transactions';
+      db.query(query, (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+  }
 }
 
 class Block {
@@ -139,31 +213,47 @@ class Block {
 
   // Save the block to the database
   async save() {
-    const query = 'INSERT INTO blocks (hash, previous_hash, timestamp, nonce, difficulty, merkle_root) VALUES (?, ?, ?, ?, ?, ?)';
-    const values = [this.hash, this.previousHash, this.timestamp, this.nonce, this.difficulty, this.merkleRoot];
+    const query = 'INSERT INTO blocks (hash, previous_hash, timestamp, nonce, difficulty, merkle_root, `index`) VALUES (?, ?, ?, ?, ?, ?, ?)';
+    const values = [this.hash, this.previousHash, this.timestamp, this.nonce, this.difficulty, this.merkleRoot, this.index];
     return new Promise((resolve, reject) => {
       db.query(query, values, async (err, results) => {
         if (err) {
-          return reject(err); // If there is an error, reject the promise
+          return reject(err);
         }
         try {
-          // Save all transactions in this block
           for (const tx of this.transactions) {
             tx.blockHash = this.hash;
-            await tx.save(); // Save each transaction
+            await tx.save();
           }
-          
-          // Save Merkle tree nodes to the database
+
           const merkleTree = new MerkleTree(this.transactions.map(tx => tx.hash));
           await merkleTree.saveNodesToDatabase(this.hash);
-          
-          resolve(results); // Resolve with the database result
+
+          // Store Merkle proofs
+          for (const tx of this.transactions) {
+            const proof = merkleTree.getProof(tx.hash);
+            await this.saveMerkleProof(tx.hash, proof);
+          }
+
+          resolve(results);
         } catch (saveErr) {
-          reject(saveErr); // If there is an error saving transactions or Merkle tree, reject the promise
+          reject(saveErr);
         }
       });
     });
   }
+
+  async saveMerkleProof(transactionHash, proof) {
+    const query = 'INSERT INTO merkle_proof_paths (block_hash, transaction_hash, proof_path) VALUES (?, ?, ?)';
+    const values = [this.hash, transactionHash, JSON.stringify(proof)];
+    return new Promise((resolve, reject) => {
+      db.query(query, values, (err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+  }
+
 
   // Load a block from the database
   static async load(hash) {
@@ -227,6 +317,23 @@ class Blockchain {
   // Get the latest block in the blockchain
   getLatestBlock() {
     return this.chain[this.chain.length - 1];
+  }
+
+  async addInitialBalance(address, amount) {
+    // Create an initial reward transaction
+    const rewardTx = new Transaction(null, address, amount);
+    rewardTx.hash = rewardTx.calculateHash();
+    rewardTx.signature = null; // Reward transactions don't need a signature
+
+    // Create a block with the reward transaction
+    const block = new Block(this.chain.length, this.getLatestBlock().hash, Date.now(), [rewardTx], this.difficulty);
+    block.mineBlock(this.difficulty);
+
+    console.log(`Mined initial block with hash: ${block.hash}`);
+    this.chain.push(block);
+
+    await block.save(); // Save the block to the database
+    console.log(`Initial balance of ${amount} credited to address ${address}`);
   }
 
   // Mine pending transactions and add a new block to the blockchain

@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { Block } = require('../src/blockchain'); 
+const { Blockchain, Block, Transaction } = require('../src/blockchain'); 
 const { createSignedTx } = require('./helpers'); 
 
 let blockObj = null;
@@ -70,6 +70,39 @@ describe('Block class', function() {
     });
   });
 });
+
+describe('Blockchain', function() {
+  describe('minePendingTransactions', function() {
+    it('should create 10 blocks for 1000 transactions', async function() {
+      this.timeout(60000); // Increase timeout to 60 seconds
+      
+      const blockchain = new Blockchain();
+      const miningRewardAddress = 'miner-address';
+
+      // Create 1000 unique transactions
+      const transactionSet = new Set();
+      while (transactionSet.size < 1000) {
+        const tx = createSignedTx();
+        if (!transactionSet.has(tx.hash)) {
+          transactionSet.add(tx.hash);
+          blockchain.pendingTransactions.push(tx);
+        }
+      }
+
+      // Ensure 1000 unique transactions are added
+      assert.strictEqual(blockchain.pendingTransactions.length, 1000);
+
+      // Mine pending transactions
+      for (let i = 0; i < 10; i++) {
+        await blockchain.minePendingTransactions(miningRewardAddress);
+      }
+
+      // Check if 10 blocks have been created
+      assert.strictEqual(blockchain.chain.length, 11); // 1 genesis block + 10 mined blocks
+    });
+  });
+});
+
 
 
 

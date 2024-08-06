@@ -3,6 +3,15 @@
 const { Blockchain, Transaction } = require('./src/blockchain');
 const { Node, MerkleTree } = require('./src/merkleTree');
 const EC = require('elliptic').ec;
+const { createKeypair, SolanaTransaction, requestAirdrop, LAMPORTS_PER_SOL } = require('./solana');
+const yargs = require('yargs/yargs');
+const { hideBin } = require('yargs/helpers');
+
+// Parse command-line arguments
+const argv = yargs(hideBin(process.argv)).argv;
+
+// Debug: Print parsed arguments
+console.log('Parsed arguments:', argv);
 
 // Create a new elliptic curve instance using the secp256k1 curve
 const ec = new EC('secp256k1');
@@ -38,6 +47,7 @@ console.log(JSON.stringify(myCoin, null, 2));
 // Async function to create and mine transactions
 (async () => {
   try {
+    await myCoin.addInitialBalance(publicKey, 100);
     // Mine the initial transactions to confirm the balance
     await myCoin.minePendingTransactions(publicKey);
     console.log('Initial mining complete!');
@@ -78,11 +88,31 @@ console.log(JSON.stringify(myCoin, null, 2));
     // Validate the blockchain to ensure its integrity
     const isValid = await myCoin.isChainValid();
     console.log(`Blockchain valid: ${isValid}`);
+
+    // Solana transaction code integration
+    /*
+    const fromKeypair = createKeypair();
+    const toPublicKey = '3i6kD6Wpgd3A7ZqAmjrcZ9mMxv9az6k7EATtUV5NsDoB'; // Replace with actual recipient public key
+
+    const solanaTransaction = new SolanaTransaction(fromKeypair.publicKey.toString(), toPublicKey, 0.000000001); // 1 SOL
+    await solanaTransaction.executeSolanaTransaction(fromKeypair, toPublicKey, argv.airdrop);
+    */
   } catch (error) {
     // Catch and log any errors that occur during the process
     console.error('Error:', error);
   }
 })();
+
+
+
+
+
+
+
+
+
+
+
 
 
 

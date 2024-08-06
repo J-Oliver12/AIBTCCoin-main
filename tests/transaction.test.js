@@ -18,6 +18,8 @@ describe('Transaction class', function() {
     });
   });
 
+  
+
   describe('Sign', function() {
     it('should sign the transaction', function() {
       const tx = createSignedTx();
